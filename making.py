@@ -1,4 +1,3 @@
-import submaking
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.textinput import TextInput
@@ -6,30 +5,28 @@ from kivy.uix.label import Label
 from kivy.uix.button import Button
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.gridlayout import GridLayout
+from kivy.uix.screenmanager import Screen
 import csv
-from kivy.uix.screenmanager import Screen, ScreenManager
-
-import json,os
-fc = submaking.Flashcard()  # Flashcard functionality from your imported OOP module
-
-
-try:
-    with open('Title.json', 'r') as file:
-        name = json.load(file)  # Assuming it returns a string containing the f
-except FileNotFoundError:
-    print("Not found")
-    name =""
+import json
+from kivy.storage.jsonstore import JsonStore
+import os
+from submaking import Flashcard
 
 class CreateFlashcard(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.fc = Flashcard()
+
         # Main layout setup
         self.layout = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        current_set_name = self.fc.get_current_set()
         
-        # Title label (Top-Left Style)
+
+
+        # Title label
         title_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=40)
         self.title_label = Label(
-            text=str(name),
+            text=current_set_name or "Flashcards",
             font_size=18,
             size_hint=(None, None),
             size=(200, 40),
@@ -85,9 +82,8 @@ class CreateFlashcard(Screen):
         self.edit_button = Button(text="Edit Card", background_color=(0, 0, 0.5, 1))
         self.view_button = Button(text="View Flashcards", background_color=(0, 0, 0.5, 1))
         self.delete_button = Button(text="Delete Card", background_color=(0.5, 0, 0, 1))
-
-        #return to the selection 
         self.back_button = Button(text="BACK", background_color=(0, 0, 0.5, 1))
+
         self.back_button.bind(on_release=lambda x: setattr(self.manager, 'current', 'Studying'))
 
         # Button bindings
@@ -108,21 +104,14 @@ class CreateFlashcard(Screen):
         term = self.term_input.text.strip()
         description = self.description_input.text.strip()
         if term and description:
-            message = fc.add_flashcard(term, description)
+            message = self.fc.add_flashcard(term, description)
         else:
             message = "Both Term and Description are required."
         self.display_message(message)
 
     def view_flashcards(self, instance):
         self.scroll_content.clear_widgets()
-        flashcards_data = fc.display_flashcards()
-
-        if isinstance(flashcards_data, str):
-            from io import StringIO
-            csv_reader = csv.reader(StringIO(flashcards_data))
-            flashcards = list(csv_reader)
-        else:
-            flashcards = flashcards_data
+        flashcards = self.fc.display_flashcards()
 
         for flashcard in flashcards:
             if len(flashcard) == 2:
@@ -138,7 +127,7 @@ class CreateFlashcard(Screen):
             new_term = self.description_input.text.strip()
             new_description = self.search_input.text.strip()
             if new_term and new_description:
-                message = fc.update_flashcard(index, new_term, new_description)
+                message = self.fc.update_flashcard(index, new_term, new_description)
             else:
                 message = "Both new Term and new Description are required."
         except ValueError:
@@ -148,7 +137,7 @@ class CreateFlashcard(Screen):
     def delete_flashcard(self, instance):
         try:
             index = int(self.term_input.text.strip())
-            message = fc.delete_flashcard(index)
+            message = self.fc.delete_flashcard(index)
         except ValueError:
             message = "Invalid index. Enter a valid number in the Term field."
         self.display_message(message)
@@ -161,4 +150,26 @@ class CreateFlashcard(Screen):
         self.term_input.text = ""
         self.description_input.text = ""
 
+    def open_set(self, set_name):
+        try:
+            # Get the path to Title.json
+            title_store_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Title.json")
+            title_store = JsonStore(title_store_path)
 
+            # Save the set name under a key, ensuring it's stored as a dictionary
+            title_store.put("title", name=set_name)
+
+            print(f"Saved {set_name} to Title.json")
+            self.fc.load_flashcards()
+      # Ensure this method works with the saved data
+            self.manager.current = "CreateFlash"  # Navigate to the flashcard creation screen
+            return set_name  # Return the set name for further use
+        except Exception as e:
+            print(f"Error opening set: {e}")
+            return None  # Return None if an error occurs
+
+
+
+    @staticmethod
+    def get_title_json_path():
+        return os.path.join(os.getcwd(), 'Title.json')
