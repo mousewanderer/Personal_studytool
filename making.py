@@ -12,6 +12,8 @@ from kivy.storage.jsonstore import JsonStore
 import os
 from submaking import Flashcard
 
+
+
 class CreateFlashcard(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -20,8 +22,6 @@ class CreateFlashcard(Screen):
         # Main layout setup
         self.layout = BoxLayout(orientation='vertical', spacing=10, padding=10)
         current_set_name = self.fc.get_current_set()
-        
-
 
         # Title label
         title_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=40)
@@ -47,12 +47,40 @@ class CreateFlashcard(Screen):
         self.scroll_content.bind(minimum_height=self.scroll_content.setter('height'))
         self.scroll_view.add_widget(self.scroll_content)
         self.layout.add_widget(self.scroll_view)
+        
 
         # Input fields for adding/editing flashcards
         self.term_input = TextInput(hint_text="Enter Term", size_hint_y=None, height=40)
         self.description_input = TextInput(hint_text="Enter Description", size_hint_y=None, height=40)
         self.layout.add_widget(self.term_input)
         self.layout.add_widget(self.description_input)
+
+        #_________________________---------------------------------------------------------------------
+        # Layout
+        main_layout = BoxLayout(orientation="vertical", spacing=10, padding=10)
+
+        # Top bar with back and refresh buttons
+        top_bar = BoxLayout(size_hint=(1, 0.1), spacing=10)
+        self.back_button = Button(text="Back", size_hint=(0.5, 1), background_color=(0, 0, 1, 1))
+        self.refresh_button = Button(text="Refresh", size_hint=(0.5, 1), background_color=(0, 0.5, 0, 1))
+        
+        # Bind back button to clear and navigate
+        self.back_button.bind(on_release=lambda x: self.go_back_to_studies())
+        
+        # Bind refresh button to refresh flashcards
+        self.refresh_button.bind(on_release=lambda x: self.refresh_flashcards())
+
+        top_bar.add_widget(self.back_button)
+        top_bar.add_widget(self.refresh_button)
+        main_layout.add_widget(top_bar)
+
+        # Flashcard area
+        self.flashcard_area = Label(text="No flashcards loaded", size_hint=(1, 0.9))
+        main_layout.add_widget(self.flashcard_area)
+
+        self.add_widget(main_layout)
+        #_________________________________________---------------------------------------------------------------
+
 
         # Add action buttons
         self.add_action_buttons()
@@ -69,6 +97,8 @@ class CreateFlashcard(Screen):
         download_button = Button(text="Download CSV", background_color=(0, 0, 0.5, 1))
         sync_button = Button(text="Sync", background_color=(0, 0, 0.5, 1))
 
+        download_button.bind(on_press=self.download_csv)
+
         action_layout.add_widget(share_button)
         action_layout.add_widget(download_button)
         action_layout.add_widget(sync_button)
@@ -84,7 +114,10 @@ class CreateFlashcard(Screen):
         self.delete_button = Button(text="Delete Card", background_color=(0.5, 0, 0, 1))
         self.back_button = Button(text="BACK", background_color=(0, 0, 0.5, 1))
 
-        self.back_button.bind(on_release=lambda x: setattr(self.manager, 'current', 'Studying'))
+
+#Back button
+        self.back_button.bind(on_release=lambda x: self.go_back_to_studying())
+       
 
         # Button bindings
         self.add_button.bind(on_press=self.add_flashcard)
@@ -111,13 +144,11 @@ class CreateFlashcard(Screen):
 
     def view_flashcards(self, instance):
         self.scroll_content.clear_widgets()
-        flashcards = self.fc.display_flashcards()
+        flashcards = self.fc.flashcards
 
-        for flashcard in flashcards:
-            if len(flashcard) == 2:
-                term, description = flashcard
-                card_label = Label(text=f"{term}: {description}", size_hint_y=None, height=40)
-                self.scroll_content.add_widget(card_label)
+        for index, (term, description) in enumerate(flashcards, start=1):
+            card_label = Label(text=f"{index}. {term}: {description}", size_hint_y=None, height=40)
+            self.scroll_content.add_widget(card_label)
 
         self.scroll_view.scroll_y = 1
 
@@ -150,26 +181,79 @@ class CreateFlashcard(Screen):
         self.term_input.text = ""
         self.description_input.text = ""
 
+    def download_csv(self, instance):
+        try:
+            self.fc.save_flashcards()
+            self.display_message("CSV file downloaded successfully.")
+        except Exception as e:
+            self.display_message(f"Error downloading CSV: {e}")
+
     def open_set(self, set_name):
         try:
-            # Get the path to Title.json
-            title_store_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Title.json")
-            title_store = JsonStore(title_store_path)
-
-            # Save the set name under a key, ensuring it's stored as a dictionary
-            title_store.put("title", name=set_name)
-
-            print(f"Saved {set_name} to Title.json")
+            self.fc.set_current_set(set_name)
             self.fc.load_flashcards()
-      # Ensure this method works with the saved data
-            self.manager.current = "CreateFlash"  # Navigate to the flashcard creation screen
-            return set_name  # Return the set name for further use
+            self.title_label.text = set_name
         except Exception as e:
-            print(f"Error opening set: {e}")
-            return None  # Return None if an error occurs
+            self.display_message(f"Error opening set: {e}")
+
+
+    #___________________--------------------------------------------------------------------------------------------------------------
+    def load_flashcards(self):
+        """Loads flashcards from the current CSV set."""
+        try:
+            # Retrieve the selected set name from Title.json
+            title_store = JsonStore(os.path.join(os.path.dirname(os.path.abspath(__file__)), "Title.json"))
+            self.current_set = title_store.get("title")["name"]
+
+            # Load flashcards from CSV
+            csv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Flashcards", f"{self.current_set}.csv")
+            self.flashcards = []
+
+            with open(csv_path, "r") as file:
+                reader = csv.reader(file)
+                next(reader)  # Skip header row
+                self.flashcards = list(reader)
+            
+            # Update the flashcard area
+            self.display_flashcards()
+        except Exception as e:
+            self.flashcard_area.text = f"Error loading flashcards: {e}"
+
+    def display_flashcards(self):
+        """Displays the loaded flashcards."""
+        if self.flashcards:
+            self.flashcard_area.text = "\n".join([f"{i+1}. {term} - {desc}" for i, (term, desc) in enumerate(self.flashcards)])
+        else:
+            self.flashcard_area.text = "No flashcards available."
+
+    def clear_flashcards(self):
+        """Clears the flashcards."""
+        self.flashcards = []
+        self.flashcard_area.text = "No flashcards loaded."
+
+    def refresh_flashcards(self):
+        """Clears and reloads flashcards."""
+        self.clear_flashcards()
+        self.load_flashcards()
+
+    def go_back_to_studies(self):
+        """Clears flashcards and navigates back to the Studies screen."""
+        self.clear_flashcards()
+        self.manager.current = 'Studying'
+
+#_______________________________________---------------------------------------------------------------_______________________________________---------------------------------------------------------------
+
+    def go_back_to_studying(self):
+        # Clear flashcards
+        Flashcard().clear_flashcards()
+        # Switch to the "Studying" screen
+        self.manager.current = 'Studying'
 
 
 
-    @staticmethod
-    def get_title_json_path():
-        return os.path.join(os.getcwd(), 'Title.json')
+
+        
+
+
+
+    

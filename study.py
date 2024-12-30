@@ -10,7 +10,6 @@ from kivy.uix.scrollview import ScrollView
 import csv
 import os
 import glob
-import json
 from kivy.storage.jsonstore import JsonStore
 
 from functools import partial
@@ -46,23 +45,19 @@ class CreateSetPopup(Popup):
         set_name = self.set_name_input.text.strip()
         if set_name:
             try:
-                # Define directories
                 current_directory = os.path.dirname(os.path.abspath(__file__))
                 flashcard_directory = os.path.join(current_directory, "Flashcards")
                 os.makedirs(flashcard_directory, exist_ok=True)
 
-                # Save set name to Title.json using JsonStore
                 title_store = JsonStore(os.path.join(current_directory, "Title.json"))
                 title_store.put("title", name=set_name)
 
-                # Create an empty CSV for the new set
                 csv_path = os.path.join(flashcard_directory, f"{set_name}.csv")
 
                 with open(csv_path, "w", newline="") as file:
                     writer = csv.writer(file)
-                    writer.writerow(["Term", "Description"])  # Optional header row
-                    writer.writerows(fc.flashcards or [["Sample Term", "Sample Description"]])  # Placeholder if empty
-
+                    writer.writerow(["Term", "Description"])
+                    writer.writerows(fc.flashcards or [["Sample Term", "Sample Description"]])
 
                 print(f"Set '{set_name}' created successfully!")
             except Exception as e:
@@ -74,61 +69,83 @@ class CreateSetPopup(Popup):
 class Studies(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        main_layout = BoxLayout(orientation="vertical", spacing=10, padding=10)
+        self.main_layout = BoxLayout(orientation="vertical", spacing=10, padding=10)
+        self.search_bar = TextInput(hint_text="Search", size_hint=(1, 0.1), multiline=False)
+        self.search_bar.bind(text=self.update_flashcard_grid)
 
-        # Top bar with sync and back buttons
-        top_bar = BoxLayout(size_hint=(1, 0.1), spacing=10)
+        self.top_bar = BoxLayout(size_hint=(1, 0.1), spacing=10)
         sync_button = Button(text="SYNC WITH MOBILE", size_hint=(0.5, 1), background_color=(0, 0, 1, 1))
         back_button = Button(text="Back to Main", size_hint=(0.5, 1), background_color=(0, 0, 1, 1))
-        back_button.bind(on_release=lambda x: setattr(self.manager, 'current', 'play'))
+
+        back_button.bind(on_release=lambda x: (self.refresh_flashcard_grid(), setattr(self.manager, 'current', 'play')))
+
         
-        top_bar.add_widget(sync_button)
-        top_bar.add_widget(back_button)
-        main_layout.add_widget(top_bar)
+        self.top_bar.add_widget(sync_button)
+        self.top_bar.add_widget(back_button)
 
-        # Search bar
-        search_bar = TextInput(hint_text="Search", size_hint=(1, 0.1), multiline=False)
-        main_layout.add_widget(search_bar)
+        self.flashcard_grid = GridLayout(cols=3, spacing=10, size_hint_y=None)
+        self.flashcard_scroll = ScrollView(size_hint=(1, 0.7))
+        self.flashcard_scroll.add_widget(self.flashcard_grid)
 
-        # Flashcard grid
-        flashcard_grid = GridLayout(cols=3, spacing=10, size_hint=(1, 0.7))
-        sets = self.Get_files_CSV()
+        self.create_set_button = Button(text="CREATE SET", size_hint=(1, 0.1), background_color=(0, 0, 1, 1))
+        self.create_set_button.bind(on_release=self.open_create_set_popup)
 
+        self.main_layout.add_widget(self.top_bar)
+        self.main_layout.add_widget(self.search_bar)
+        self.main_layout.add_widget(self.flashcard_scroll)
+        self.main_layout.add_widget(self.create_set_button)
+
+        self.add_widget(self.main_layout)
+        self.load_flashcard_grid()
+
+    def open_create_set_popup(self, instance):
+        popup = CreateSetPopup()
+        popup.open()
+
+    def load_flashcard_grid(self):
+        self.flashcard_grid.clear_widgets()
+        sets = self.get_files_csv()
         for set_name in sets:
             card = BoxLayout(orientation="vertical", padding=5, spacing=5, size_hint=(None, None), size=(200, 100))
             card_label = Label(text=set_name, halign="center", valign="middle")
-            print(set_name)
             card_label.bind(size=card_label.setter('text_size'))
-            
+
             open_button = Button(text="Open", size_hint=(1, 0.3), background_color=(0, 0, 1, 1))
-            
-            # Capture the current set_name using a default argument in the lambda
             open_button.bind(on_release=lambda instance, name=set_name: self.open_set(name))
-            
+
             card.add_widget(card_label)
             card.add_widget(open_button)
-            flashcard_grid.add_widget(card)
-    
-        main_layout.add_widget(flashcard_grid)
+            self.flashcard_grid.add_widget(card)
 
-        # Create set button
-        create_set_button = Button(text="CREATE SET", size_hint=(1, 0.1), background_color=(0, 0, 1, 1))
-        create_set_button.bind(on_release=self.open_create_set_popup)
-        main_layout.add_widget(create_set_button)
+    def update_flashcard_grid(self, instance, value):
+        self.flashcard_grid.clear_widgets()
+        sets = [s for s in self.get_files_csv() if value.lower() in s.lower()]
+        for set_name in sets:
+            card = BoxLayout(orientation="vertical", padding=5, spacing=5, size_hint=(None, None), size=(200, 100))
+            card_label = Label(text=set_name, halign="center", valign="middle")
+            card_label.bind(size=card_label.setter('text_size'))
 
-        self.add_widget(main_layout)
+            open_button = Button(text="Open", size_hint=(1, 0.3), background_color=(0, 0, 1, 1))
+            open_button.bind(on_release=lambda instance, name=set_name: self.open_set(name))
+
+            card.add_widget(card_label)
+            card.add_widget(open_button)
+            self.flashcard_grid.add_widget(card)
 
 
     def open_set(self, set_name):
         try:
             title_store = JsonStore(os.path.join(os.path.dirname(os.path.abspath(__file__)), "Title.json"))
-            title_store.put("title", name=set_name)
-
+            title_store.put("title", name=set_name)  # Update Title.json with the new set name
             print(f"Saved {set_name} to Title.json")
+            
+            # Explicitly reload the flashcards after updating Title.json
             if hasattr(fc, "load_flashcards"):
                 fc.load_flashcards()
             else:
                 print("Error: Flashcard object does not support 'load_flashcards'.")
+            
+            # Change the screen after ensuring data is reloaded
             self.manager.current = "CreateFlash"
             return set_name
         except Exception as e:
@@ -136,13 +153,7 @@ class Studies(Screen):
             return None
 
 
-     
-    def open_create_set_popup(self, instance):
-        popup = CreateSetPopup()
-        popup.open()
-
-    def Get_files_CSV(self):
-
+    def get_files_csv(self):
         try:
             directory = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Flashcards")
             os.makedirs(directory, exist_ok=True)
@@ -153,21 +164,11 @@ class Studies(Screen):
             print(f"Error retrieving files: {e}\n{traceback.format_exc()}")
             return []
 
-class CreatingSET(Screen):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        main_layout = BoxLayout(orientation="vertical", spacing=10, padding=10)
+    def refresh_flashcard_grid(self):
+        self.clear_widgets()  # Remove all existing widgets
+        self.__init__()       # Reinitialize the screen
 
-        create_set_button = Button(text="CREATE SET", size_hint=(1, 0.1), background_color=(0, 0, 1, 1))
-        create_set_button.bind(on_release=self.open_create_set_popup)
-        main_layout.add_widget(create_set_button)
+    
 
-        self.add_widget(main_layout)
+    
 
-    def open_create_set_popup(self, instance):
-        popup = CreateSetPopup()
-        popup.open()
-
-
-
- 

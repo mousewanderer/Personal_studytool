@@ -1,21 +1,16 @@
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.button import Button
-from kivy.uix.label import Label
-from kivy.uix.screenmanager import Screen, ScreenManager
-from kivy.app import App
-from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.button import Button
-from kivy.uix.textinput import TextInput
 from kivy.uix.label import Label
-from kivy.uix.screenmanager import Screen, ScreenManager
+from kivy.uix.textinput import TextInput
 from kivy.uix.popup import Popup
 from kivy.uix.scrollview import ScrollView
-from kivy.uix.gridlayout import GridLayout
+from kivy.uix.screenmanager import Screen, ScreenManager
 from kivy.core.window import Window
-from kivy.logger import Logger
 from kivy.storage.jsonstore import JsonStore
+from kivy.logger import Logger
+
 
 #Per file is one view section (This code will follow hiercictal structure
 
@@ -33,7 +28,7 @@ import submaking
 
 #Code for the view
 import study
-from study import Studies,CreateSetPopup,CreatingSET
+from study import Studies,CreateSetPopup
 
 #code for creating flashcards
 import making
